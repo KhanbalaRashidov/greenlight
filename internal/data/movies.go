@@ -1,6 +1,7 @@
 package data
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"github.com/lib/pq"
@@ -39,27 +40,40 @@ type MovieModel struct {
 	DB *sql.DB
 }
 
-// Add a placeholder method for inserting a new record in the movies table.
 func (m MovieModel) Insert(movie *Movie) error {
-	query := `INSERT INTO movies (title, year, runtime, genres) VALUES ($1, $2, $3, $4) RETURNING id, created_at, version`
+	query := `
+        INSERT INTO movies (title, year, runtime, genres) 
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, created_at, version`
 
 	args := []any{movie.Title, movie.Year, movie.Runtime, pq.Array(movie.Genres)}
 
-	return m.DB.QueryRow(query, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
+	// Create a context with a 3-second timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Use QueryRowContext() and pass the context as the first argument.
+	return m.DB.QueryRowContext(ctx, query, args...).Scan(&movie.ID, &movie.CreatedAt, &movie.Version)
 }
 
-// Add a placeholder method for fetching a specific record from the movies table.
 func (m MovieModel) Get(id int64) (*Movie, error) {
-
 	if id < 1 {
 		return nil, ErrRecordNotFound
 	}
 
-	query := `SELECT id, created_at, title, year, runtime, genres, version FROM movies WHERE id = $1`
+	// Remove the pg_sleep(10) clause.
+	query := `
+        SELECT id, created_at, title, year, runtime, genres, version
+        FROM movies
+        WHERE id = $1`
 
 	var movie Movie
 
-	err := m.DB.QueryRow(query, id).Scan(
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Remove &[]byte{} from the first Scan() destination.
+	err := m.DB.QueryRowContext(ctx, query, id).Scan(
 		&movie.ID,
 		&movie.CreatedAt,
 		&movie.Title,
@@ -78,14 +92,15 @@ func (m MovieModel) Get(id int64) (*Movie, error) {
 		}
 	}
 
-	// Otherwise, return a pointer to the Movie struct.
 	return &movie, nil
 }
 
-// Add a placeholder method for updating a specific record in the movies table.
 func (m MovieModel) Update(movie *Movie) error {
-
-	query := `UPDATE movies SET title = $1, year = $2, runtime = $3, genres = $4, version = version + 1 WHERE id = $5 RETURNING version`
+	query := `
+        UPDATE movies 
+        SET title = $1, year = $2, runtime = $3, genres = $4, version = version + 1
+        WHERE id = $5 AND version = $6
+        RETURNING version`
 
 	args := []any{
 		movie.Title,
@@ -93,20 +108,42 @@ func (m MovieModel) Update(movie *Movie) error {
 		movie.Runtime,
 		pq.Array(movie.Genres),
 		movie.ID,
+		movie.Version,
 	}
 
-	return m.DB.QueryRow(query, args...).Scan(&movie.Version)
+	// Create a context with a 3-second timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Use QueryRowContext() and pass the context as the first argument.
+	err := m.DB.QueryRowContext(ctx, query, args...).Scan(&movie.Version)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrEditConflict
+		default:
+			return err
+		}
+	}
+
+	return nil
 }
 
-// Add a placeholder method for deleting a specific record from the movies table.
 func (m MovieModel) Delete(id int64) error {
 	if id < 1 {
 		return ErrRecordNotFound
 	}
 
-	query := `DELETE FROM movies    WHERE id = $1`
+	query := `
+        DELETE FROM movies
+        WHERE id = $1`
 
-	result, err := m.DB.Exec(query, id)
+	// Create a context with a 3-second timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Use ExecContext() and pass the context as the first argument.
+	result, err := m.DB.ExecContext(ctx, query, id)
 	if err != nil {
 		return err
 	}
