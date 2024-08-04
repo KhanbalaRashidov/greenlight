@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"database/sql"
+	"expvar"
 	"flag"
 	"greenlight/internal/data"
 	"greenlight/internal/jsonlog"
 	"greenlight/internal/mailer"
 	"os"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -42,6 +45,9 @@ type config struct {
 		password string
 		sender   string
 	}
+	cors struct {
+		trustedOrigins []string
+	}
 }
 
 // Define an application struct to hold the dependencies for our HTTP handlers, helpers,
@@ -75,6 +81,12 @@ func main() {
 	flag.StringVar(&cfg.smtp.password, "smtp-password", "8b5dca536850f8", "SMTP password")
 	flag.StringVar(&cfg.smtp.sender, "smtp-sender", "Greenlight <no-reply@greenlight.khanbala.net>", "SMTP sender")
 
+	//cors
+	flag.Func("cors-trusted-origins", "Trusted CORS origins (space separated)", func(val string) error {
+		cfg.cors.trustedOrigins = strings.Fields(val)
+		return nil
+	})
+
 	flag.Parse()
 
 	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
@@ -87,6 +99,23 @@ func main() {
 	defer db.Close()
 
 	logger.PrintInfo("database connection pool established", nil)
+
+	expvar.NewString("version").Set(version)
+
+	// Publish the number of active goroutines.
+	expvar.Publish("goroutines", expvar.Func(func() any {
+		return runtime.NumGoroutine()
+	}))
+
+	// Publish the database connection pool statistics.
+	expvar.Publish("database", expvar.Func(func() any {
+		return db.Stats()
+	}))
+
+	// Publish the current Unix timestamp.
+	expvar.Publish("timestamp", expvar.Func(func() any {
+		return time.Now().Unix()
+	}))
 
 	app := &application{
 		config: cfg,
