@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"expvar"
 	"flag"
+	"fmt"
 	"greenlight/internal/data"
 	"greenlight/internal/jsonlog"
 	"greenlight/internal/mailer"
+	"greenlight/internal/vcs"
 	"os"
 	"runtime"
 	"strings"
@@ -17,7 +19,9 @@ import (
 	_ "github.com/lib/pq"
 )
 
-const version = "1.0.0"
+var (
+	version = vcs.Version()
+)
 
 // Define a config struct to hold all the configuration settings for our application.
 // For now, the only configuration settings will be the network port that we want the
@@ -87,7 +91,14 @@ func main() {
 		return nil
 	})
 
+	displayVersion := flag.Bool("version", false, "Display version and exit")
+
 	flag.Parse()
+
+	if *displayVersion {
+		fmt.Printf("Version:\t%s\n", version)
+		os.Exit(0)
+	}
 
 	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
 
