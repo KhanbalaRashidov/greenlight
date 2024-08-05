@@ -73,3 +73,7 @@ vendor:
 build/api:
 	@echo 'Building cmd/api...'
 	go build -o=./bin/api ./cmd/api
+
+.PHONY: run/api
+run/api:
+	@go run ./cmd/api -db-dsn=${GREENLIGHT_DB_DSN} -jwt-secret=${JWT_SECRET}
